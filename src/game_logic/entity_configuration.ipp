@@ -1460,7 +1460,7 @@ void EntityFactory::configureEntity(
       entity.assign<DestructionEffects>(
         HOVER_BOT_KILL_EFFECT_SPEC,
         DestructionEffects::TriggerCondition::OnKilled,
-        mSpriteFactory.actorFrameRect(actorID, 0));
+        mpSpriteFactory->actorFrameRect(actorID, 0));
       break;
 
     case ActorID::Big_green_cat_LEFT:
@@ -1476,7 +1476,7 @@ void EntityFactory::configureEntity(
       entity.assign<DestructionEffects>(
         BIOLOGICAL_ENEMY_KILL_EFFECT_SPEC,
         DestructionEffects::TriggerCondition::OnKilled,
-        mSpriteFactory.actorFrameRect(actorID, 0));
+        mpSpriteFactory->actorFrameRect(actorID, 0));
       entity.assign<AppearsOnRadar>();
       break;
 
@@ -1501,7 +1501,7 @@ void EntityFactory::configureEntity(
       entity.assign<DestructionEffects>(
         SIMPLE_TECH_KILL_EFFECT_SPEC,
         DestructionEffects::TriggerCondition::OnKilled,
-        mSpriteFactory.actorFrameRect(actorID, 0));
+        mpSpriteFactory->actorFrameRect(actorID, 0));
       addDefaultMovingBody(entity, boundingBox);
       entity.component<MovingBody>()->mGravityAffected = false;
       entity.assign<BehaviorController>(behaviors::WatchBot{});
@@ -1516,7 +1516,7 @@ void EntityFactory::configureEntity(
       entity.assign<DestructionEffects>(
         SIMPLE_TECH_KILL_EFFECT_SPEC,
         DestructionEffects::TriggerCondition::OnKilled,
-        mSpriteFactory.actorFrameRect(actorID, 0));
+        mpSpriteFactory->actorFrameRect(actorID, 0));
       entity.assign<AppearsOnRadar>();
       break;
 
@@ -1597,7 +1597,7 @@ void EntityFactory::configureEntity(
       entity.assign<DestructionEffects>(
         BIOLOGICAL_ENEMY_KILL_EFFECT_SPEC,
         DestructionEffects::TriggerCondition::OnKilled,
-        mSpriteFactory.actorFrameRect(actorID, 0));
+        mpSpriteFactory->actorFrameRect(actorID, 0));
       entity.assign<PlayerDamaging>(Damage{1});
       entity.assign<ai::components::SlimeBlob>();
       addDefaultMovingBody(entity, boundingBox);
@@ -1654,7 +1654,7 @@ void EntityFactory::configureEntity(
       entity.assign<DestructionEffects>(
         BIOLOGICAL_ENEMY_KILL_EFFECT_SPEC,
         DestructionEffects::TriggerCondition::OnKilled,
-        mSpriteFactory.actorFrameRect(actorID, 0));
+        mpSpriteFactory->actorFrameRect(actorID, 0));
       entity.assign<BoundingBox>(boundingBox);
       entity.assign<BehaviorController>(behaviors::CeilingSucker{});
       entity.assign<AppearsOnRadar>();
@@ -1696,7 +1696,7 @@ void EntityFactory::configureEntity(
       entity.assign<DestructionEffects>(
         SKELETON_KILL_EFFECT_SPEC,
         DestructionEffects::TriggerCondition::OnKilled,
-        mSpriteFactory.actorFrameRect(actorID, 0));
+        mpSpriteFactory->actorFrameRect(actorID, 0));
       entity.assign<PlayerDamaging>(Damage{1});
       entity.assign<ai::components::SimpleWalker>(skeletonAiConfig());
       addDefaultMovingBody(entity, boundingBox);
@@ -1713,7 +1713,7 @@ void EntityFactory::configureEntity(
       entity.assign<DestructionEffects>(
         GRABBER_CLAW_KILL_EFFECT_SPEC,
         DestructionEffects::TriggerCondition::OnKilled,
-        mSpriteFactory.actorFrameRect(actorID, 0));
+        mpSpriteFactory->actorFrameRect(actorID, 0));
       entity.assign<CustomRenderFunc>(&behaviors::GrabberClaw::render);
       entity.assign<AppearsOnRadar>();
       break;
@@ -1758,7 +1758,7 @@ void EntityFactory::configureEntity(
       entity.assign<DestructionEffects>(
         BIOLOGICAL_ENEMY_KILL_EFFECT_SPEC,
         DestructionEffects::TriggerCondition::OnKilled,
-        mSpriteFactory.actorFrameRect(actorID, 0));
+        mpSpriteFactory->actorFrameRect(actorID, 0));
       entity.assign<AnimationSequence>(FLY_ANIMATION_SEQUENCE, 0, true);
       entity.assign<AppearsOnRadar>();
       break;
@@ -1778,7 +1778,7 @@ void EntityFactory::configureEntity(
       entity.assign<DestructionEffects>(
         EXTENDED_BIOLOGICAL_ENEMY_KILL_EFFECT_SPEC,
         DestructionEffects::TriggerCondition::OnKilled,
-        mSpriteFactory.actorFrameRect(actorID, 0));
+        mpSpriteFactory->actorFrameRect(actorID, 0));
       entity.assign<AppearsOnRadar>();
       break;
 
@@ -1810,7 +1810,7 @@ void EntityFactory::configureEntity(
       entity.assign<DestructionEffects>(
         BLUE_GUARD_KILL_EFFECT_SPEC,
         DestructionEffects::TriggerCondition::OnKilled,
-        mSpriteFactory.actorFrameRect(ActorID::Blue_guard_RIGHT, 0));
+        mpSpriteFactory->actorFrameRect(ActorID::Blue_guard_RIGHT, 0));
       entity.assign<AppearsOnRadar>();
       break;
 
@@ -1859,7 +1859,7 @@ void EntityFactory::configureEntity(
       entity.assign<Shootable>(
         Health{675 + 75 * difficultyOffset}, GivenScore{0});
       entity.component<Shootable>()->mDestroyWhenKilled = false;
-      entity.assign<BoundingBox>(mSpriteFactory.actorFrameRect(actorID, 0));
+      entity.assign<BoundingBox>(mpSpriteFactory->actorFrameRect(actorID, 0));
       entity.assign<BehaviorController>(behaviors::BossEpisode3{});
       entity.assign<ActivationSettings>(
         ActivationSettings::Policy::AlwaysAfterFirstActivation);
@@ -1889,7 +1889,7 @@ void EntityFactory::configureEntity(
       entity.assign<DestructionEffects>(
         BOSS4_PROJECTILE_KILL_EFFECT_SPEC,
         DestructionEffects::TriggerCondition::OnKilled,
-        mSpriteFactory.actorFrameRect(actorID, 0));
+        mpSpriteFactory->actorFrameRect(actorID, 0));
       entity.assign<AppearsOnRadar>();
       break;
 
@@ -1946,7 +1946,7 @@ void EntityFactory::configureEntity(
       entity.assign<DestructionEffects>(
         RIGELATIN_KILL_EFFECT_SPEC,
         DestructionEffects::TriggerCondition::OnKilled,
-        mSpriteFactory.actorFrameRect(ActorID::Rigelatin_soldier, 0));
+        mpSpriteFactory->actorFrameRect(ActorID::Rigelatin_soldier, 0));
       entity.assign<AppearsOnRadar>();
       break;
 
@@ -2012,7 +2012,7 @@ void EntityFactory::configureEntity(
       entity.assign<DestructionEffects>(
         REACTOR_KILL_EFFECT_SPEC,
         DestructionEffects::TriggerCondition::OnKilled,
-        mSpriteFactory.actorFrameRect(ActorID::Electric_reactor, 0));
+        mpSpriteFactory->actorFrameRect(ActorID::Electric_reactor, 0));
       entity.assign<ActorTag>(ActorTag::Type::Reactor);
       entity.assign<AppearsOnRadar>();
       break;
