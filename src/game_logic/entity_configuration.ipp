@@ -1452,11 +1452,11 @@ void EntityFactory::configureEntity(
     // Enemies
     // ----------------------------------------------------------------------
 
-    case ActorID::Hoverbot: // Cylindrical robot with blinking 'head', aka hover-bot
+    case ActorID::Hoverbot:
       entity.assign<Shootable>(Health{1 + difficultyOffset}, GivenScore{150});
       addDefaultMovingBody(entity, boundingBox);
       entity.component<Sprite>()->mShow = false;
-      entity.assign<ai::components::HoverBot>();
+      entity.assign<BehaviorController>(behaviors::HoverBot{});
       entity.assign<DestructionEffects>(
         HOVER_BOT_KILL_EFFECT_SPEC,
         DestructionEffects::TriggerCondition::OnKilled,
@@ -1682,12 +1682,12 @@ void EntityFactory::configureEntity(
       entity.assign<AppearsOnRadar>();
       break;
 
-    case ActorID::Sentry_robot_generator: // hover bot generator
+    case ActorID::Sentry_robot_generator:
       entity.assign<AnimationLoop>(1, 0, 3);
       entity.assign<Shootable>(Health{20}, GivenScore{2500});
       entity.assign<DestructionEffects>(TECH_KILL_EFFECT_SPEC);
       entity.assign<BoundingBox>(boundingBox);
-      entity.assign<ai::components::HoverBotSpawnMachine>();
+      entity.assign<BehaviorController>(behaviors::HoverBotSpawnMachine{});
       entity.assign<AppearsOnRadar>();
       break;
 
