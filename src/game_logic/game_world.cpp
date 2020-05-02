@@ -251,9 +251,13 @@ std::vector<base::Vector> collectRadarDots(
 
 
 GameWorld::WorldState::WorldState(
+  IGameServiceProvider* pServiceProvider,
+  renderer::Renderer* pRenderer,
+  const loader::ResourceLoader* pResources,
+  data::PlayerModel* pPlayerModel,
   entityx::EventManager& eventManager,
   SpriteFactory* pSpriteFactory,
-  data::GameSessionId sessionId
+  const data::GameSessionId sessionId
 )
   : mEntities(eventManager)
   , mEntityFactory(
@@ -263,6 +267,45 @@ GameWorld::WorldState::WorldState(
     sessionId.mDifficulty)
   , mRadarDishCounter(mEntities, eventManager)
 {
+  auto loadedLevel = loader::loadLevel(
+    levelFileName(sessionId.mEpisode, sessionId.mLevel),
+    *pResources,
+    sessionId.mDifficulty);
+  auto playerEntity =
+    mEntityFactory.createEntitiesForLevel(loadedLevel.mActors);
+
+  const auto counts = countBonusRelatedItems(mEntities);
+  mBonusInfo.mInitialCameraCount = counts.mCameraCount;
+  mBonusInfo.mInitialMerchandiseCount = counts.mMerchandiseCount;
+  mBonusInfo.mInitialWeaponCount = counts.mWeaponCount;
+  mBonusInfo.mInitialLaserTurretCount = counts.mLaserTurretCount;
+  mBonusInfo.mInitialBonusGlobeCount = counts.mBonusGlobeCount;
+
+  mMap = std::move(loadedLevel.mMap);
+  mInitialActors = std::move(loadedLevel.mActors);
+  mBackdropSwitchCondition = loadedLevel.mBackdropSwitchCondition;
+  mLevelMusicFile = loadedLevel.mMusicFile;
+  mMapAtLevelStart = mMap;
+
+  mpSystems = std::make_unique<IngameSystems>(
+    sessionId,
+    playerEntity,
+    pPlayerModel,
+    &mMap,
+    engine::MapRenderer::MapRenderData{std::move(loadedLevel)},
+    pServiceProvider,
+    &mEntityFactory,
+    &mRandomGenerator,
+    &mRadarDishCounter,
+    pRenderer,
+    mEntities,
+    eventManager,
+    *pResources);
+
+  if (loadedLevel.mEarthquake) {
+    mEarthQuakeEffect = EarthQuakeEffect{
+      pServiceProvider, &mRandomGenerator, &eventManager};
+  }
 }
 
 
@@ -292,7 +335,6 @@ GameWorld::GameWorld(
       *context.mpResources,
       context.mpUiSpriteSheet)
   , mMessageDisplay(mpServiceProvider, context.mpUiRenderer)
-  , mState(mEventManager, &mSpriteFactory, sessionId)
 {
   mEventManager.subscribe<rigel::events::CheckPointActivated>(*this);
   mEventManager.subscribe<rigel::events::ExitReached>(*this);
@@ -313,10 +355,10 @@ GameWorld::GameWorld(
   loadLevel();
 
   if (playerPositionOverride) {
-    mState.mpSystems->player().position() = *playerPositionOverride;
+    mpState->mpSystems->player().position() = *playerPositionOverride;
   }
 
-  mState.mpSystems->centerViewOnPlayer();
+  mpState->mpSystems->centerViewOnPlayer();
 
   updateGameLogic({});
 
@@ -324,11 +366,11 @@ GameWorld::GameWorld(
     mMessageDisplay.setMessage(data::Messages::WelcomeToDukeNukem2);
   }
 
-  if (mState.mEarthQuakeEffect) { // overrides welcome message
+  if (mpState->mEarthQuakeEffect) { // overrides welcome message
     showTutorialMessage(data::TutorialMessageId::EarthQuake);
   }
 
-  if (mState.mRadarDishCounter.radarDishesPresent()) { // overrides earth quake
+  if (mpState->mRadarDishCounter.radarDishesPresent()) { // overrides earth quake
     mMessageDisplay.setMessage(data::Messages::FindAllRadars);
   }
 
@@ -342,22 +384,22 @@ GameWorld::~GameWorld() = default;
 
 
 bool GameWorld::levelFinished() const {
-  return mState.mLevelFinished;
+  return mpState->mLevelFinished;
 }
 
 
 std::set<data::Bonus> GameWorld::achievedBonuses() const {
   std::set<data::Bonus> bonuses;
 
-  if (!mState.mBonusInfo.mPlayerTookDamage) {
+  if (!mpState->mBonusInfo.mPlayerTookDamage) {
     bonuses.insert(data::Bonus::NoDamageTaken);
   }
 
   const auto counts =
     countBonusRelatedItems(
-      const_cast<entityx::EntityManager&>(mState.mEntities));
+      const_cast<entityx::EntityManager&>(mpState->mEntities));
 
-  if (mState.mBonusInfo.mInitialCameraCount > 0 && counts.mCameraCount == 0) {
+  if (mpState->mBonusInfo.mInitialCameraCount > 0 && counts.mCameraCount == 0) {
     bonuses.insert(data::Bonus::DestroyedAllCameras);
   }
 
@@ -369,22 +411,22 @@ std::set<data::Bonus> GameWorld::achievedBonuses() const {
   }
 
   if (
-    mState.mBonusInfo.mInitialMerchandiseCount > 0 && counts.mMerchandiseCount == 0
+    mpState->mBonusInfo.mInitialMerchandiseCount > 0 && counts.mMerchandiseCount == 0
   ) {
     bonuses.insert(data::Bonus::CollectedAllMerchandise);
   }
 
-  if (mState.mBonusInfo.mInitialWeaponCount > 0 && counts.mWeaponCount == 0) {
+  if (mpState->mBonusInfo.mInitialWeaponCount > 0 && counts.mWeaponCount == 0) {
     bonuses.insert(data::Bonus::CollectedEveryWeapon);
   }
 
   if (
-    mState.mBonusInfo.mInitialLaserTurretCount > 0 && counts.mLaserTurretCount == 0
+    mpState->mBonusInfo.mInitialLaserTurretCount > 0 && counts.mLaserTurretCount == 0
   ) {
     bonuses.insert(data::Bonus::DestroyedAllSpinningLaserTurrets);
   }
 
-  if (mState.mBonusInfo.mInitialBonusGlobeCount == mState.mBonusInfo.mNumShotBonusGlobes) {
+  if (mpState->mBonusInfo.mInitialBonusGlobeCount == mpState->mBonusInfo.mNumShotBonusGlobes) {
     bonuses.insert(data::Bonus::ShotAllBonusGlobes);
   }
 
@@ -400,21 +442,21 @@ void GameWorld::receive(const rigel::events::CheckPointActivated& event) {
 
 
 void GameWorld::receive(const rigel::events::ExitReached& event) {
-  if (mState.mRadarDishCounter.radarDishesPresent() && event.mCheckRadarDishes) {
+  if (mpState->mRadarDishCounter.radarDishesPresent() && event.mCheckRadarDishes) {
     showTutorialMessage(data::TutorialMessageId::RadarsStillFunctional);
   } else {
-    mState.mLevelFinished = true;
+    mpState->mLevelFinished = true;
   }
 }
 
 
 void GameWorld::receive(const rigel::events::PlayerDied& event) {
-  mState.mPlayerDied = true;
+  mpState->mPlayerDied = true;
 }
 
 
 void GameWorld::receive(const rigel::events::PlayerTookDamage& event) {
-  mState.mBonusInfo.mPlayerTookDamage = true;
+  mpState->mBonusInfo.mPlayerTookDamage = true;
 }
 
 
@@ -424,17 +466,17 @@ void GameWorld::receive(const rigel::events::PlayerMessage& event) {
 
 
 void GameWorld::receive(const rigel::events::PlayerTeleported& event) {
-  mState.mTeleportTargetPosition = event.mNewPosition;
+  mpState->mTeleportTargetPosition = event.mNewPosition;
 }
 
 
 void GameWorld::receive(const rigel::events::ScreenFlash& event) {
-  mState.mScreenFlashColor = event.mColor;
+  mpState->mScreenFlashColor = event.mColor;
 }
 
 
 void GameWorld::receive(const rigel::events::ScreenShake& event) {
-  mState.mScreenShakeOffsetX = event.mAmount;
+  mpState->mScreenShakeOffsetX = event.mAmount;
 }
 
 
@@ -460,7 +502,7 @@ void GameWorld::receive(const game_logic::events::ShootableKilled& event) {
       break;
 
     case AT::ShootableBonusGlobe:
-      ++mState.mBonusInfo.mNumShotBonusGlobes;
+      ++mpState->mBonusInfo.mNumShotBonusGlobes;
       break;
 
     default:
@@ -470,86 +512,55 @@ void GameWorld::receive(const game_logic::events::ShootableKilled& event) {
 
 
 void GameWorld::receive(const rigel::events::BossActivated& event) {
-  mState.mActiveBossEntity = event.mBossEntity;
-  mpServiceProvider->playMusic(*mState.mLevelMusicFile);
+  mpState->mActiveBossEntity = event.mBossEntity;
+  mpServiceProvider->playMusic(mpState->mLevelMusicFile);
 }
 
 
 void GameWorld::receive(const rigel::events::BossDestroyed& event) {
-  mState.mBossDeathAnimationStartPending = true;
+  mpState->mBossDeathAnimationStartPending = true;
 }
 
 
 void GameWorld::loadLevel() {
-  auto loadedLevel = loader::loadLevel(
-    levelFileName(mSessionId.mEpisode, mSessionId.mLevel),
-    *mpResources,
-    mSessionId.mDifficulty);
-  auto playerEntity =
-    mState.mEntityFactory.createEntitiesForLevel(loadedLevel.mActors);
-
-  const auto counts = countBonusRelatedItems(mState.mEntities);
-  mState.mBonusInfo.mInitialCameraCount = counts.mCameraCount;
-  mState.mBonusInfo.mInitialMerchandiseCount = counts.mMerchandiseCount;
-  mState.mBonusInfo.mInitialWeaponCount = counts.mWeaponCount;
-  mState.mBonusInfo.mInitialLaserTurretCount = counts.mLaserTurretCount;
-  mState.mBonusInfo.mInitialBonusGlobeCount = counts.mBonusGlobeCount;
-
-  mState.mMap = std::move(loadedLevel.mMap);
-  mState.mInitialActors = std::move(loadedLevel.mActors);
-  mState.mBackdropSwitchCondition = loadedLevel.mBackdropSwitchCondition;
-  mState.mMapAtLevelStart = mState.mMap;
-
-  mState.mpSystems = std::make_unique<IngameSystems>(
-    mSessionId,
-    playerEntity,
-    mpPlayerModel,
-    &mState.mMap,
-    engine::MapRenderer::MapRenderData{std::move(loadedLevel)},
+  mpState = std::make_unique<WorldState>(
     mpServiceProvider,
-    &mState.mEntityFactory,
-    &mState.mRandomGenerator,
-    &mState.mRadarDishCounter,
     mpRenderer,
-    mState.mEntities,
+    mpResources,
+    mpPlayerModel,
     mEventManager,
-    *mpResources);
-
-  if (loadedLevel.mEarthquake) {
-    mState.mEarthQuakeEffect = EarthQuakeEffect{
-      mpServiceProvider, &mState.mRandomGenerator, &mEventManager};
-  }
+    &mSpriteFactory,
+    mSessionId);
 
   if (data::isBossLevel(mSessionId.mLevel)) {
-    mState.mLevelMusicFile = loadedLevel.mMusicFile;
     mpServiceProvider->playMusic(BOSS_LEVEL_INTRO_MUSIC);
   } else {
-    mpServiceProvider->playMusic(loadedLevel.mMusicFile);
+    mpServiceProvider->playMusic(mpState->mLevelMusicFile);
   }
 }
 
 
 void GameWorld::updateGameLogic(const PlayerInput& input) {
-  mState.mBackdropFlashColor = std::nullopt;
-  mState.mScreenFlashColor = std::nullopt;
+  mpState->mBackdropFlashColor = std::nullopt;
+  mpState->mScreenFlashColor = std::nullopt;
 
-  if (mState.mReactorDestructionFramesElapsed) {
+  if (mpState->mReactorDestructionFramesElapsed) {
     updateReactorDestructionEvent();
   }
 
-  if (mState.mEarthQuakeEffect) {
-    mState.mEarthQuakeEffect->update();
+  if (mpState->mEarthQuakeEffect) {
+    mpState->mEarthQuakeEffect->update();
   }
 
   mHudRenderer.updateAnimation();
   mMessageDisplay.update();
 
-  if (mState.mActiveBossEntity && mState.mBossDeathAnimationStartPending) {
+  if (mpState->mActiveBossEntity && mpState->mBossDeathAnimationStartPending) {
     engine::removeSafely<game_logic::components::PlayerDamaging>(
-      mState.mActiveBossEntity);
-    mState.mActiveBossEntity.replace<game_logic::components::BehaviorController>(
+      mpState->mActiveBossEntity);
+    mpState->mActiveBossEntity.replace<game_logic::components::BehaviorController>(
       behaviors::DyingBoss{});
-    mState.mBossDeathAnimationStartPending = false;
+    mpState->mBossDeathAnimationStartPending = false;
   }
 
   if (
@@ -559,9 +570,9 @@ void GameWorld::updateGameLogic(const PlayerInput& input) {
     const auto viewPortSize = base::Extents{
       info.mWidthTiles - HUD_WIDTH,
       data::GameTraits::mapViewPortSize.height};
-    mState.mpSystems->update(input, mState.mEntities, viewPortSize);
+    mpState->mpSystems->update(input, mpState->mEntities, viewPortSize);
   } else {
-    mState.mpSystems->update(input, mState.mEntities, data::GameTraits::mapViewPortSize);
+    mpState->mpSystems->update(input, mpState->mEntities, data::GameTraits::mapViewPortSize);
   }
 }
 
@@ -571,20 +582,20 @@ void GameWorld::render() {
     mpOptions->mWidescreenModeOn && renderer::canUseWidescreenMode(mpRenderer);
 
   auto drawWorld = [this](const base::Extents& viewPortSize) {
-    if (!mState.mScreenFlashColor) {
-      mState.mpSystems->render(
-        mState.mEntities, mState.mBackdropFlashColor, viewPortSize);
+    if (!mpState->mScreenFlashColor) {
+      mpState->mpSystems->render(
+        mpState->mEntities, mpState->mBackdropFlashColor, viewPortSize);
     } else {
-      mpRenderer->clear(*mState.mScreenFlashColor);
+      mpRenderer->clear(*mpState->mScreenFlashColor);
     }
   };
 
   auto drawTopRow = [&, this]() {
-    if (mState.mActiveBossEntity) {
+    if (mpState->mActiveBossEntity) {
       using game_logic::components::Shootable;
 
-      const auto health = mState.mActiveBossEntity.has_component<Shootable>()
-        ? mState.mActiveBossEntity.component<Shootable>()->mHealth : 0;
+      const auto health = mpState->mActiveBossEntity.has_component<Shootable>()
+        ? mpState->mActiveBossEntity.component<Shootable>()->mHealth : 0;
 
       if (widescreenModeOn) {
         drawBossHealthBar(health, *mpTextRenderer, *mpUiSpriteSheet);
@@ -602,7 +613,7 @@ void GameWorld::render() {
 
   auto drawHud = [&, this]() {
     const auto radarDots =
-      collectRadarDots(mState.mEntities, mState.mpSystems->player().position());
+      collectRadarDots(mpState->mEntities, mpState->mpSystems->player().position());
     mHudRenderer.render(*mpPlayerModel, radarDots);
   };
 
@@ -612,7 +623,7 @@ void GameWorld::render() {
 
     {
       const auto saved = setupIngameViewportWidescreen(
-        mpRenderer, info, mState.mScreenShakeOffsetX);
+        mpRenderer, info, mpState->mScreenShakeOffsetX);
 
       drawWorld({info.mWidthTiles, data::GameTraits::viewPortHeightTiles});
 
@@ -624,7 +635,7 @@ void GameWorld::render() {
     drawTopRow();
   } else {
     {
-      const auto saved = setupIngameViewport(mpRenderer, mState.mScreenShakeOffsetX);
+      const auto saved = setupIngameViewport(mpRenderer, mpState->mScreenShakeOffsetX);
 
       drawWorld(data::GameTraits::mapViewPortSize);
       drawHud();
@@ -640,34 +651,34 @@ void GameWorld::processEndOfFrameActions() {
   handleLevelExit();
   handleTeleporter();
 
-  mState.mScreenShakeOffsetX = 0;
+  mpState->mScreenShakeOffsetX = 0;
 }
 
 
 void GameWorld::onReactorDestroyed(const base::Vector& position) {
-  mState.mScreenFlashColor = loader::INGAME_PALETTE[7];
-  mState.mEntityFactory.createProjectile(
+  mpState->mScreenFlashColor = loader::INGAME_PALETTE[7];
+  mpState->mEntityFactory.createProjectile(
     ProjectileType::ReactorDebris,
     position + base::Vector{-1, 0},
     ProjectileDirection::Left);
-  mState.mEntityFactory.createProjectile(
+  mpState->mEntityFactory.createProjectile(
     ProjectileType::ReactorDebris,
     position + base::Vector{3, 0},
     ProjectileDirection::Right);
 
   const auto shouldDoSpecialEvent =
-    mState.mBackdropSwitchCondition ==
+    mpState->mBackdropSwitchCondition ==
       data::map::BackdropSwitchCondition::OnReactorDestruction;
-  if (!mState.mReactorDestructionFramesElapsed && shouldDoSpecialEvent) {
-    mState.mpSystems->switchBackdrops();
-    mState.mBackdropSwitched = true;
-    mState.mReactorDestructionFramesElapsed = 0;
+  if (!mpState->mReactorDestructionFramesElapsed && shouldDoSpecialEvent) {
+    mpState->mpSystems->switchBackdrops();
+    mpState->mBackdropSwitched = true;
+    mpState->mReactorDestructionFramesElapsed = 0;
   }
 }
 
 
 void GameWorld::updateReactorDestructionEvent() {
-  auto& framesElapsed = *mState.mReactorDestructionFramesElapsed;
+  auto& framesElapsed = *mpState->mReactorDestructionFramesElapsed;
   if (framesElapsed >= 14) {
     return;
   }
@@ -675,7 +686,7 @@ void GameWorld::updateReactorDestructionEvent() {
   if (framesElapsed == 13) {
     mMessageDisplay.setMessage(data::Messages::DestroyedEverything);
   } else if (framesElapsed % 2 == 1) {
-    mState.mBackdropFlashColor = base::Color{255, 255, 255, 255};
+    mpState->mBackdropFlashColor = base::Color{255, 255, 255, 255};
     mpServiceProvider->playSound(data::SoundId::BigExplosion);
   }
 
@@ -689,18 +700,18 @@ void GameWorld::handleLevelExit() {
   using game_logic::components::Trigger;
   using game_logic::components::TriggerType;
 
-  mState.mEntities.each<Trigger, WorldPosition, Active>(
+  mpState->mEntities.each<Trigger, WorldPosition, Active>(
     [this](
       entityx::Entity,
       const Trigger& trigger,
       const WorldPosition& triggerPosition,
       const Active&
     ) {
-      if (trigger.mType != TriggerType::LevelExit || mState.mLevelFinished) {
+      if (trigger.mType != TriggerType::LevelExit || mpState->mLevelFinished) {
         return;
       }
 
-      const auto playerBBox = mState.mpSystems->player().worldSpaceHitBox();
+      const auto playerBBox = mpState->mpSystems->player().worldSpaceHitBox();
       const auto playerAboveOrAtTriggerHeight =
         playerBBox.bottom() <= triggerPosition.y;
       const auto touchingTriggerOnXAxis =
@@ -718,9 +729,9 @@ void GameWorld::handleLevelExit() {
 
 
 void GameWorld::handlePlayerDeath() {
-  if (mState.mPlayerDied) {
-    mState.mPlayerDied = false;
-    mState.mActiveBossEntity = {};
+  if (mpState->mPlayerDied) {
+    mpState->mPlayerDied = false;
+    mpState->mActiveBossEntity = {};
 
     if (mActivatedCheckpoint) {
       restartFromCheckpoint();
@@ -734,23 +745,23 @@ void GameWorld::handlePlayerDeath() {
 void GameWorld::restartLevel() {
   mpServiceProvider->fadeOutScreen();
 
-  if (mState.mBackdropSwitched) {
-    mState.mpSystems->switchBackdrops();
-    mState.mBackdropSwitched = false;
+  if (mpState->mBackdropSwitched) {
+    mpState->mpSystems->switchBackdrops();
+    mpState->mBackdropSwitched = false;
   }
 
-  mState.mMap = mState.mMapAtLevelStart;
-  mState.mBonusInfo.mNumShotBonusGlobes = 0;
-  mState.mBonusInfo.mPlayerTookDamage = false;
+  mpState->mMap = mpState->mMapAtLevelStart;
+  mpState->mBonusInfo.mNumShotBonusGlobes = 0;
+  mpState->mBonusInfo.mPlayerTookDamage = false;
 
-  mState.mEntities.reset();
-  auto playerEntity = mState.mEntityFactory.createEntitiesForLevel(
-    mState.mInitialActors);
-  mState.mpSystems->restartFromBeginning(playerEntity);
+  mpState->mEntities.reset();
+  auto playerEntity = mpState->mEntityFactory.createEntitiesForLevel(
+    mpState->mInitialActors);
+  mpState->mpSystems->restartFromBeginning(playerEntity);
 
   *mpPlayerModel = mPlayerModelAtLevelStart;
 
-  mState.mpSystems->centerViewOnPlayer();
+  mpState->mpSystems->centerViewOnPlayer();
   render();
 
   mpServiceProvider->fadeInScreen();
@@ -761,17 +772,17 @@ void GameWorld::restartFromCheckpoint() {
   mpServiceProvider->fadeOutScreen();
 
   const auto shouldSwitchBackAfterRespawn =
-    mState.mBackdropSwitchCondition ==
+    mpState->mBackdropSwitchCondition ==
       data::map::BackdropSwitchCondition::OnTeleportation;
-  if (mState.mBackdropSwitched && shouldSwitchBackAfterRespawn) {
-    mState.mpSystems->switchBackdrops();
-    mState.mBackdropSwitched = false;
+  if (mpState->mBackdropSwitched && shouldSwitchBackAfterRespawn) {
+    mpState->mpSystems->switchBackdrops();
+    mpState->mBackdropSwitched = false;
   }
 
   mpPlayerModel->restoreFromCheckpoint(mActivatedCheckpoint->mState);
-  mState.mpSystems->restartFromCheckpoint(mActivatedCheckpoint->mPosition);
+  mpState->mpSystems->restartFromCheckpoint(mActivatedCheckpoint->mPosition);
 
-  mState.mpSystems->centerViewOnPlayer();
+  mpState->mpSystems->centerViewOnPlayer();
   render();
 
   mpServiceProvider->fadeInScreen();
@@ -779,24 +790,24 @@ void GameWorld::restartFromCheckpoint() {
 
 
 void GameWorld::handleTeleporter() {
-  if (!mState.mTeleportTargetPosition) {
+  if (!mpState->mTeleportTargetPosition) {
     return;
   }
 
   mpServiceProvider->fadeOutScreen();
 
-  mState.mpSystems->player().position() = *mState.mTeleportTargetPosition;
-  mState.mTeleportTargetPosition = std::nullopt;
+  mpState->mpSystems->player().position() = *mpState->mTeleportTargetPosition;
+  mpState->mTeleportTargetPosition = std::nullopt;
 
   const auto switchBackdrop =
-    mState.mBackdropSwitchCondition ==
+    mpState->mBackdropSwitchCondition ==
       data::map::BackdropSwitchCondition::OnTeleportation;
   if (switchBackdrop) {
-    mState.mpSystems->switchBackdrops();
-    mState.mBackdropSwitched = !mState.mBackdropSwitched;
+    mpState->mpSystems->switchBackdrops();
+    mpState->mBackdropSwitched = !mpState->mBackdropSwitched;
   }
 
-  mState.mpSystems->centerViewOnPlayer();
+  mpState->mpSystems->centerViewOnPlayer();
   render();
   mpServiceProvider->fadeInScreen();
 }
@@ -811,8 +822,8 @@ void GameWorld::showTutorialMessage(const data::TutorialMessageId id) {
 
 
 void GameWorld::printDebugText(std::ostream& stream) const {
-  mState.mpSystems->printDebugText(stream);
-  stream << "Entities: " << mState.mEntities.size() << '\n';
+  mpState->mpSystems->printDebugText(stream);
+  stream << "Entities: " << mpState->mEntities.size() << '\n';
 }
 
 }

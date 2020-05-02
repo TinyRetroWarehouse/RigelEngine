@@ -450,7 +450,7 @@ void GameRunner::World::updateWorld(const engine::TimeDelta dt) {
       update();
     }
 
-    mpWorld->mState.mpSystems->updateBackdropAutoScrolling(dt);
+    mpWorld->mpState->mpSystems->updateBackdropAutoScrolling(dt);
   }
 }
 
@@ -592,7 +592,7 @@ void GameRunner::World::handlePlayerGameControllerInput(const SDL_Event& event) 
 void GameRunner::World::renderDebugText() {
   std::stringstream debugText;
 
-  if (mpWorld->mState.mpSystems->player().mGodModeOn) {
+  if (mpWorld->mpState->mpSystems->player().mGodModeOn) {
     debugText << "GOD MODE on\n";
   }
 
@@ -609,7 +609,7 @@ void GameRunner::World::handleDebugKeys(const SDL_Event& event) {
     return;
   }
 
-  auto& debuggingSystem = mpWorld->mState.mpSystems->debuggingSystem();
+  auto& debuggingSystem = mpWorld->mpState->mpSystems->debuggingSystem();
   switch (event.key.keysym.sym) {
     case SDLK_b:
       debuggingSystem.toggleBoundingBoxDisplay();
@@ -639,7 +639,7 @@ void GameRunner::World::handleDebugKeys(const SDL_Event& event) {
 
     case SDLK_F10:
       {
-        auto& player = mpWorld->mState.mpSystems->player();
+        auto& player = mpWorld->mpState->mpSystems->player();
         player.mGodModeOn = !player.mGodModeOn;
       }
       break;
