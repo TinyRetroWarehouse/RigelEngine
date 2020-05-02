@@ -282,11 +282,6 @@ void IngameSystems::switchBackdrops() {
 }
 
 
-void IngameSystems::restartFromBeginning(entityx::Entity newPlayerEntity) {
-  mPlayer.resetAfterDeath(newPlayerEntity);
-}
-
-
 void IngameSystems::restartFromCheckpoint(
   const base::Vector& checkpointPosition
 ) {
