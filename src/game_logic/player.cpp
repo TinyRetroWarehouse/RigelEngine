@@ -405,7 +405,13 @@ base::Vector Player::orientedPosition() const {
 
 
 void Player::receive(const events::ElevatorAttachmentChanged& event) {
-  mAttachedElevator = event.mAttachedElevator;
+  using CT = events::ElevatorAttachmentChanged;
+
+  if (event.mType == CT::Attach) {
+    mAttachedElevator = event.mElevator;
+  } else if (event.mType == CT::Detach && mAttachedElevator == event.mElevator) {
+    mAttachedElevator = {};
+  }
 }
 
 
